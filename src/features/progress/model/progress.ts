@@ -10,34 +10,40 @@ import { readingMetrics } from "../lib/metrics";
 export function useProgress(
   doc: Ref<ComicDocument>,
   location: Ref<ReadingLocation>,
+  /** 正式续读点；批注预览跳转不会写到它。 */
+  resume: Ref<ReadingLocation>,
   saved: SavedSession | null,
 ) {
   const bookmarks = ref<Bookmark[]>(saved?.bookmarks ?? []),
     status = ref("本地自动保存已开启"),
-    metrics = computed(() => readingMetrics(doc.value, location.value));
+    /** 进度与自动保存跟随正式续读点。 */
+    metrics = computed(() => readingMetrics(doc.value, resume.value)),
+    /** 页号显示跟随当前画面（含批注预览）。 */
+    viewMetrics = computed(() => readingMetrics(doc.value, location.value));
   function save() {
     status.value = writeSession({
       document: doc.value,
-      location: location.value,
+      location: resume.value,
       bookmarks: bookmarks.value,
     });
   }
-  watch([doc, location, bookmarks], save, { deep: true });
+  watch([doc, resume, bookmarks], save, { deep: true });
   function add() {
+    const target = location.value;
     const same = bookmarks.value.find(
       (b) =>
-        b.location.pageId === location.value.pageId &&
-        b.location.panelId === location.value.panelId,
+        b.location.pageId === target.pageId &&
+        b.location.panelId === target.panelId,
     );
     if (same) {
       status.value = "此处分镜已收藏";
       return;
     }
-    const c = doc.value.chapters.find((c) => c.id === location.value.chapterId);
+    const c = doc.value.chapters.find((c) => c.id === target.chapterId);
     bookmarks.value.push({
       id: makeId("bookmark"),
-      label: `${c?.title ?? "章节"} · 第 ${metrics.value.pageIndex} 页`,
-      location: { ...location.value },
+      label: `${c?.title ?? "章节"} · 第 ${viewMetrics.value.pageIndex} 页`,
+      location: { ...target },
       created: Date.now(),
     });
   }
@@ -50,5 +56,5 @@ export function useProgress(
     );
     bookmarks.value = bookmarks.value.filter((b) => ids.has(b.location.pageId));
   }
-  return { bookmarks, status, metrics, add, remove, reconcile, save };
+  return { bookmarks, status, metrics, viewMetrics, add, remove, reconcile, save };
 }
